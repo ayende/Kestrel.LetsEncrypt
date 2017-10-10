@@ -24,6 +24,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https.Internal
         readonly string _domain;
         private readonly string _email;
         private readonly IPAddress _address;
+        private readonly Func<string, byte[]> _tryGetCachedCertificate;
+        private readonly Action<string, byte[]> _setCachedCertificate;
 
         private class LetEncryptHttpChallengerResponder: IStartup
         {
@@ -55,11 +57,15 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https.Internal
             }
         }
 
-        public LetsEncryptCertificateFetcher(string domain, string email, IPAddress address)
+        public LetsEncryptCertificateFetcher(string domain, string email, IPAddress address, 
+            Func<string, byte[]> tryGetCachedCertificate, 
+            Action<string, byte[]> setCachedCertificate)
         {
             _domain = domain;
             _email = email;
             _address = address;
+            _tryGetCachedCertificate = tryGetCachedCertificate;
+            _setCachedCertificate = setCachedCertificate;
         }
 
         public IPAddress Address => _address;
@@ -144,15 +150,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https.Internal
                 var pfx = pfxBuilder.Build(_domain + " cert", "");
                 _certificate = new X509Certificate2(pfx);
 
-                pfx = ProtectedData.Protect(pfx, null, DataProtectionScope.CurrentUser);
-                try
-                {
-                    File.WriteAllBytes(Path.Combine(AppContext.BaseDirectory, _domain + ".pfx"), pfx);
-                }
-                catch
-                {
-                    // ignore if can't write   
-                }
+                _setCachedCertificate?.Invoke(_domain, pfx);
+
             }
             await task;
 
@@ -160,20 +159,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https.Internal
 
         private X509Certificate2 TryReadCachedCertificate()
         {
-            try
-            {
-                // we want to cache the certificate, but we don't want to manage passwords, so we'll
-                // use ProtectedData to hide the actual contents. 
-                var cert = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, _domain + ".pfx"));
-                cert = ProtectedData.Unprotect(cert, null, DataProtectionScope.CurrentUser);
-                return new X509Certificate2(cert);
-            }
-            catch
-            {
-                // missing, bad permissions, can't decrypt, bad cert
-                return null;
-            }
-
+            var cert = _tryGetCachedCertificate?.Invoke(_domain);
+            return cert == null ? null : new X509Certificate2(cert);
         }
 
         private void Renew(object state)

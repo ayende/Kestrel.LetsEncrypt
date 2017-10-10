@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -13,7 +14,13 @@ namespace Tryout
     {
         static void Main(string[] args)
         {
-            using (var fetcher = new LetsEncryptCertificateFetcher("ayende.hopto.org", "ayende@ayende.com", IPAddress.Any))
+            using (var fetcher = new LetsEncryptCertificateFetcher("ayende.hopto.org", "ayende@ayende.com", IPAddress.Any,
+                // will read & write it from the current directory
+                // read impl will probably use a vault or provide a password
+                // when persisting
+                File.ReadAllBytes,
+                File.WriteAllBytes
+                ))
             {
                 fetcher.InitializeAsync().Wait();
 
